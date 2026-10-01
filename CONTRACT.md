@@ -27,12 +27,39 @@ it nothing. From the front desk's side, nothing happened.
 
 ### What happened
 
-**The result.** What the build printed for each module.
+**The result.** Green across the board (`mvn -B clean test`):
 
-**If your prediction was wrong,** say what you missed.
+```
+lab06-api       Compiling 4 source files ... Tests run: 5, Failures: 0, Errors: 0
+lab06-consumer  Compiling 1 source file  ... Tests run: 7, Failures: 0, Errors: 0
+                (no errors, no warnings)
+lab06-booking-parent ... SUCCESS
+lab06-api .............. SUCCESS
+lab06-consumer ......... SUCCESS
+BUILD SUCCESS
+```
 
-**Is an additive change always safe in Java?** One case where adding something
-to an API still breaks a caller, if you can name one.
+The consumer was recompiled against the new API and didn't notice. Same
+calls, same method, same behavior. It just doesn't use notes yet.
+
+**If your prediction was wrong:** it wasn't. One caveat:
+green only proves nothing broke. The api suite still has 5 tests and none of
+them calls the notes overload or `getNotes()`.
+
+**Is an additive change always safe in Java?** No. It was safe here because of
+two facts about this consumer, and changing either one breaks it:
+
+- **Same argument count + `null`.** If the overload had been
+  `createBooking(String, long, long, Notes)` (a new `Notes` type, still 4
+  arguments), the walk-in call at `FrontDesk.java:27` passes a bare `null`,
+  which fits both a `String` and a `Notes`. Java can't pick, so it fails to
+  compile on a line we never touched. Tried in a throwaway copy:
+  `FrontDesk.java:[27,19] reference to createBooking is ambiguous`.
+  `:33` still compiled, since `guestName` is declared as a `String`.
+- **Someone implements the interface.** A new abstract method on `BookingApi`
+  breaks any outside class that `implements BookingApi` ("does not override
+  abstract method"). The front desk only *uses* the interface, so it was spared.
+  A `default` method would avoid this.
 
 ---
 
