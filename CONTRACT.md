@@ -11,10 +11,19 @@ Keep it short and specific. Point at methods, call sites, and error text.
 
 ### Prediction (write this before you run the build, and you can deliberate with your agent)
 
-**Will the consumer, untouched, still compile and pass?** Yes or no.
+**Will the consumer, untouched, still compile and pass?** Yes.
 
-**Why.** What does the compiler do with the consumer's existing call sites once
-the new overload exists?
+**Why.** The consumer calls `createBooking` in two places, both with 4
+arguments: `FrontDesk.java:27` (walk-in, key `null`) and `:33` (waitlist, key =
+guest name). When Java picks which `createBooking` to run, it first filters by
+name and number of arguments, so the new 5-argument version is never even a
+candidate. Both calls keep landing on the same 4-argument method, which keeps
+its javadoc promise (it just passes `notes = null` along).
+
+Nothing else the consumer touches changes either. `Booking`'s constructor is
+package-private, so the consumer can't call it. `getNotes()` is new and unused.
+Nothing in `consumer/` implements `BookingApi`, so a new interface method costs
+it nothing. From the front desk's side, nothing happened.
 
 ### What happened
 
