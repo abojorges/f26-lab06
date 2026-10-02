@@ -67,13 +67,30 @@ two facts about this consumer, and changing either one breaks it:
 
 ### Prediction (write this before you run the build)
 
-**Will the untouched consumer still compile and pass?** Yes or no, and if no,
-which module goes red and whether at compile time or test time.
+**Will the untouched consumer still compile and pass?** No. `lab06-consumer`
+goes red at compile time, and its tests never run.
 
-**Where.** Name the call sites you expect to be affected, if any.
+**Why.** Java checks every call against the API at build time: is there a
+`createBooking` that takes these arguments? After the fold, `BookingApi` only
+has `createBooking(BookingRequest)`, but the front desk still asks for the old
+`(String, long, long, String)` shape. No method matches, so the compiler refuses
+to build it. The consumer's code didn't change. The method it points at
+disappeared, and that's what makes this a breaking change.
 
-**What about the tests in `api/`, after you update them?** And whether their
-result is evidence about the consumer.
+**Where.** The only two places the consumer creates a booking:
+`FrontDesk.java:27` (`bookWalkIn`, key `null`) and `:33` (`joinWaitlist`, key =
+guest name). Expect one error per line, something like `cannot be applied to
+given types; required: BookingRequest`. The `listBookings` (`:39`) and
+`cancelBooking` (`:48`, `:53`) calls don't change, so no errors there.
+
+**What about the tests in `api/`, after you update them?** All 5 pass and
+`lab06-api` is SUCCESS. Maven builds one module at a time (compile, compile
+tests, run tests), and the api goes first, so it finishes green before the
+consumer is even looked at. But that's **not** evidence about the consumer. The
+api suite only checks the API against itself and never touches `FrontDesk`, and
+we rewrote those tests to the new call ourselves. Green api means "the new
+method works," not "nobody broke." Only the consumer's build can catch this,
+and it will show no `Tests run` line at all, since its 7 tests never compile.
 
 ### Step 1: after the fold
 
