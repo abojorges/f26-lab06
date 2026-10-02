@@ -94,11 +94,53 @@ and it will show no `Tests run` line at all, since its 7 tests never compile.
 
 ### Step 1: after the fold
 
-**What the build printed.** Paste it for each module, including file and
-line for anything that failed.
+**What the build printed.** `mvn -B clean test`, exactly as predicted:
 
-**Which module's tests ran, and which did not.** And what that tells you about
-who can detect a contract break.
+`lab06-api`: compiled (now 5 source files, with `BookingRequest`) and all
+5 tests passed, rewritten to `createBooking(BookingRequest.of(...))`.
+
+```
+[INFO] Compiling 5 source files with javac [debug deprecation release 21] to target/classes
+[INFO] Compiling 1 source file with javac [debug deprecation release 21] to target/test-classes
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+```
+
+`lab06-consumer`: recompiled against the new API and failed on the two
+`createBooking` lines. The walk-in call passes 4 arguments, including a bare
+`null`; the waitlist call passes the guest name. Neither matches the
+one-argument method.
+
+```
+[INFO] Recompiling the module because of changed dependency.
+[ERROR] COMPILATION ERROR :
+[ERROR] consumer/src/main/java/edu/cmu/cs214/frontdesk/FrontDesk.java:[27,19] method createBooking in interface edu.cmu.cs214.booking.BookingApi cannot be applied to given types;
+  required: edu.cmu.cs214.booking.BookingRequest
+  found:    java.lang.String,long,long,<nulltype>
+  reason: actual and formal argument lists differ in length
+[ERROR] consumer/src/main/java/edu/cmu/cs214/frontdesk/FrontDesk.java:[33,19] method createBooking in interface edu.cmu.cs214.booking.BookingApi cannot be applied to given types;
+  required: edu.cmu.cs214.booking.BookingRequest
+  found:    java.lang.String,long,long,java.lang.String
+  reason: actual and formal argument lists differ in length
+[INFO] 2 errors
+
+[INFO] lab06-booking-parent ............................... SUCCESS
+[INFO] lab06-api .......................................... SUCCESS
+[INFO] lab06-consumer ..................................... FAILURE
+[INFO] BUILD FAILURE
+[ERROR] Failed to execute goal ...maven-compiler-plugin:3.13.0:compile (default-compile) on project lab06-consumer
+```
+
+**Which module's tests ran, and which did not.** The api's 5 ran and passed.
+The consumer's 7 never ran. Maven stopped the consumer at `compile`, so its
+tests were never even compiled, and there's no `Tests run` line for it. No
+consumer test failed. Its whole suite was skipped.
+
+So the only thing that caught the break was the **consumer's build**. Our own
+suite was green the whole time, because it checks the API against itself and
+we updated it ourselves. A producer can't prove a change is safe from their
+own tests, since the people who get hurt are the ones whose code they don't
+see. We only saw it because their build runs inside ours. In real life, the
+front desk team would find out the day they upgraded.
 
 ### Step 2: the deprecation path
 
