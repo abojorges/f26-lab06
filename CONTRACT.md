@@ -262,11 +262,58 @@ didn't fix it. The fix has to come from types the compiler checks.
 
 ### The redesign
 
-**The proposal.** Types, enums, factories, or whatever you are proposing. Show
-the new signature and the new call site.
+**The proposal.** Split the two jobs apart, so each decision has its own place.
 
-**Why the mistake is now hard or impossible to make.** Point at the mechanism,
-such as the compiler, a validating constructor, or an exhaustive switch.
+1. **Two methods, one per intent.** Waitlisting is decided by *which method you
+   call*, not by whether a value happens to be `null`.
+2. **A `WaitlistKey` type that can't be blank.** It checks itself the moment
+   it's created.
+3. **No more `null` returns.** "Room taken" becomes part of the return type.
+
+```java
+// BookingApi
+Optional<Booking> bookIfFree(String roomId, long startMinute, long endMinute);
+Booking bookOrWaitlist(String roomId, long startMinute, long endMinute, WaitlistKey key);
+
+// The key validates itself
+public record WaitlistKey(String value) {
+    public WaitlistKey {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("waitlist key must not be blank");
+        }
+    }
+}
+```
+
+The new call sites in `FrontDesk.java`:
+
+```java
+// :27  bookWalkIn: the method name says "don't waitlist", no mystery null
+return api.bookIfFree(roomId, startMinute, endMinute);
+
+// :33  joinWaitlist: the name is checked before anything is booked
+return api.bookOrWaitlist(roomId, startMinute, endMinute, new WaitlistKey(guestName));
+```
+
+**Why the mistake is now hard or impossible to make.** Each mechanism fixes
+one of the three problems above:
+
+| The problem | Before | After | What enforces it |
+|---|---|---|---|
+| A blank name flips the mode | `joinWaitlist(…, null)` silently became a walk-in | `new WaitlistKey(null)` throws **right at `:33`**, before anything is booked | **Validating constructor**: an invalid key can't exist |
+| A reader can't understand `:27` | You need the javadoc to know what `null` means | `bookIfFree` says it in the name | **Method choice at compile time**: no runtime value can change the mode |
+| The crash shows up far away | Returns `null`, which crashes later on `.getStatus()` | Returns `Optional.empty()`, which you can't call `.getStatus()` on | **The compiler**: an `Optional` must be unwrapped, so the empty case has to be handled |
+
+In plain terms, no value silently means "actually, don't waitlist" anymore.
+To waitlist, you call the waitlist method, and it won't take a missing name.
+The mistake goes from **silent and far away** to **loud and right where it
+happened**.
+
+**The honest limit:** Java can't stop a literal `bookOrWaitlist(…, null)`, so
+the method rejects it immediately with `Objects.requireNonNull`. The difference
+is that `null` no longer *means* anything. Before, it was a valid instruction
+the API quietly obeyed. Now it's always a bug, and it fails at the call. That's
+"hard to get wrong," not "impossible."
 
 ### One tradeoff
 
