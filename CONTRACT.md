@@ -317,8 +317,42 @@ the API quietly obeyed. Now it's always a bug, and it fails at the call. That's
 
 ### One tradeoff
 
-**What it costs.** Something real, such as caller ceremony, migration burden
-against the deprecation path you just built, or more types for a newcomer to
-learn. "No real downside" does not count.
+**What it costs.** Callers have to migrate twice. We just asked the front
+desk to move to `createBooking(BookingRequest)` (that's what the step 2
+deprecation warnings point at), and this redesign replaces that method too. So
+they get a **second round of deprecation warnings right after the first**, and
+anyone who already migrated does it again. It's also more than renaming two
+lines:
 
-**When the price is worth paying.** A condition under which it is.
+- **`:27` changes its return type.** `bookIfFree` returns `Optional<Booking>`
+  instead of a `Booking` that might be `null`. That ripples into
+  `FrontDesk.bookWalkIn`'s own signature and into their test
+  `assertNull(desk.bookWalkIn(...))` at `FrontDeskTest.java:33`. Either they
+  change their own public method, pushing the change onto *their* callers, or
+  they add `.orElse(null)`, which brings the `null` right back at their
+  boundary.
+- **`:33` now throws where it used to "work."** A nameless guest used to slip
+  through silently as a walk-in. Now `new WaitlistKey(null)` throws. That's the
+  point, but code that ran without exceptions now fails, and the team has to
+  decide what the desk does for a guest with no name.
+- **For a while there are five ways to create a booking:** the 2 deprecated
+  positional methods, the newly deprecated `createBooking(BookingRequest)`,
+  `bookIfFree`, and `bookOrWaitlist`. We maintain all five until removal, and
+  a newcomer has to figure out which one is current.
+
+**When the price is worth paying.** Under two conditions:
+
+1. **The API is young and has few callers.** This one says "version 0" in its
+   javadoc and has one consumer, whose change is two lines. Breaking it now is
+   cheap; breaking it after a dozen teams depend on it is not. And the mistake
+   isn't cosmetic: a guest who silently drops off the waitlist is a real person
+   turned away while the room sits empty.
+2. **It ships in the same migration as the Milestone 2 fold**, so callers
+   migrate once, not twice. In hindsight, the better move was to go straight
+   from the positional methods to `bookIfFree` / `bookOrWaitlist` in a single
+   deprecation cycle. `BookingRequest` fixed readability, not the mistake.
+
+It's **not** worth it on a mature API with many callers you can't reach, for a
+mistake that's rare or harmless. There, a clearer javadoc plus a
+`requireNonNull` check is the cheaper fix, and the redesign waits for the next
+major version, bundled with other breaking changes.
