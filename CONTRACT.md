@@ -144,16 +144,64 @@ front desk team would find out the day they upgraded.
 
 ### Step 2: the deprecation path
 
-**What you added.** The signatures that came back, and what they delegate to.
+**What you added.** Both old signatures, back on `BookingApi` as `@Deprecated`
+`default` methods:
 
-**The warnings.** Paste one deprecation warning line from the build log (from
-a `mvn -B clean test` run, since a rerun with nothing to compile prints none).
+```java
+@Deprecated
+default Booking createBooking(String roomId, long startMinute, long endMinute,
+                              String waitlistKey)
+@Deprecated
+default Booking createBooking(String roomId, long startMinute, long endMinute,
+                              String waitlistKey, String notes)
+```
 
-**What the deprecation path resolves.** Who can now build that could not build
-during step 1, and who is on which schedule.
+Neither has logic of its own. Each one packs its arguments into a
+`BookingRequest` and calls the new method, e.g.
+`createBooking(BookingRequest.of(roomId, startMinute, endMinute).withWaitlistKey(waitlistKey))`.
+So there's still exactly one real implementation, and old and new callers
+can't drift apart. Because they're `default` methods, `InMemoryBookingService`
+(or anyone else implementing the interface) gets them for free. Their
+`@deprecated` javadoc names the replacement call.
 
-**What the warnings accomplish that a README note would not.** Be concrete
-about where the warning shows up and who sees it without looking for it.
+**The warnings.** The consumer's two errors from step 1 are now two warnings,
+on the same lines:
+
+```
+[WARNING] consumer/src/main/java/edu/cmu/cs214/frontdesk/FrontDesk.java:[27,19] createBooking(java.lang.String,long,long,java.lang.String) in edu.cmu.cs214.booking.BookingApi has been deprecated
+[WARNING] consumer/src/main/java/edu/cmu/cs214/frontdesk/FrontDesk.java:[33,19] createBooking(java.lang.String,long,long,java.lang.String) in edu.cmu.cs214.booking.BookingApi has been deprecated
+```
+
+What changed in the build output from step 1 to step 2:
+
+| | Step 1 | Step 2 |
+|---|---|---|
+| `lab06-api` | 5 tests pass, SUCCESS | 5 tests pass, SUCCESS, no warnings |
+| `lab06-consumer` compile | 2 **errors** (`:27`, `:33`) | 2 **warnings** (`:27`, `:33`) |
+| `lab06-consumer` tests | never ran | `Tests run: 7, Failures: 0` |
+| Overall | BUILD FAILURE | BUILD SUCCESS |
+
+**What the deprecation path resolves.** The front desk team can build again,
+with zero changes to their code, and all 7 of their tests pass. Old and new
+calls now work side by side, so each team moves on its own schedule:
+
+- **Us (API owners):** `createBooking(BookingRequest)` is live now, and our own
+  code and tests already use it.
+- **Them (front desk):** they keep shipping on the old calls and switch over
+  whenever they're ready, two lines in their case.
+- **Later:** once callers have migrated, the deprecated methods can be removed
+  in a future major version. That's the real break, but by then nobody depends
+  on them.
+
+**What the warnings accomplish that a README note would not.** A README only
+works if someone goes and reads it, and even then it doesn't know which of
+*their* lines are affected. The warning comes to them. It's printed in their
+own build log every time they compile, it names the exact file and line
+(`FrontDesk.java:[27,19]`), and their IDE strikes through the call as they type
+it. The `@deprecated` javadoc then tells them what to use instead, right where
+they're looking. It also can't go stale: the warning is attached to the method
+itself, so it's there for as long as the old method is, and it disappears from
+their log the moment they've migrated.
 
 ---
 
