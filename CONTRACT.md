@@ -211,14 +211,54 @@ Not coded. One misuse, one redesign, one cost. Discuss it with your TA.
 
 ### The misuse
 
-**What is easy to get wrong.** One specific thing about the API surface.
+**What is easy to get wrong.** In `createBooking`, the waitlist key does two
+jobs at once. Its *value* is a label stored on the booking (the front desk uses
+the guest's name), and *whether it's `null`* is the on/off switch for
+waitlisting: `null` means "if the room is busy, give up," anything else means
+"if the room is busy, put me in line." The compiler can't tell a deliberate
+`null` ("don't waitlist") from an accidental one ("we don't know the name").
 
-**The call site.** File and line in `consumer/`, with the call. Show the
-code that a reader cannot understand without opening the javadoc, or that a
-caller could get wrong with the compiler still happy.
+**The call site.** Two lines in `FrontDesk.java`, one for each half of the
+problem:
 
-**What goes wrong when it happens.** Silent bad behavior, wrong data, a crash
-somewhere far away?
+```java
+// :27  bookWalkIn: unreadable without the javadoc. What does null mean?
+return api.createBooking(roomId, startMinute, endMinute, null);
+
+// :33  joinWaitlist: the guest's name *is* the switch
+return api.createBooking(roomId, startMinute, endMinute, guestName);
+```
+
+At `:33`, if `guestName` is ever `null` (a blank form field, a guest who didn't
+give a name), "join the waitlist" silently becomes "walk-in." The compiler is
+happy, since `null` is a legal `String`.
+
+**What goes wrong when it happens.** Tried in a throwaway copy (book the room,
+then `joinWaitlist("Oak", 570, 630, null)`):
+
+```
+joinWaitlist returned: null
+schedule: [09:00-10:00  CONFIRMED]
+java.lang.NullPointerException: Cannot invoke "Booking.getStatus()" because "queued" is null
+```
+
+1. **Silent wrong behavior.** The guest asked to wait in line and was quietly
+   turned away. No exception, no error.
+2. **Lost data.** They're not in the schedule, so when the room frees up,
+   nobody gets promoted. The desk thinks someone is waiting, and the system
+   has no record of them.
+3. **A crash far away.** `createBooking` returns `null`, so the error shows up
+   later, wherever someone first uses the result, far from the blank name that
+   caused it.
+
+It's sneaky because it **works whenever the room is free** (no conflict, so
+the key is ignored and you get CONFIRMED). It only fails when the room is busy,
+which is the one case `joinWaitlist` exists for.
+
+Milestone 2's `BookingRequest` doesn't fix it either.
+`.withWaitlistKey(guestName)` reads better than a bare `null`, but
+`withWaitlistKey(null)` still quietly means "don't waitlist." Better names
+didn't fix it. The fix has to come from types the compiler checks.
 
 ### The redesign
 
